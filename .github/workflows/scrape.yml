@@ -1,0 +1,107 @@
+name: Run Fujin Avito Scraper
+
+on:
+  workflow_dispatch:
+    inputs:
+      time_budget_min:
+        description: "Scrape time budget in minutes (<= 350 to stay under 6h limit)"
+        required: false
+        default: "345"
+      start_page:
+        description: "0 = resume from progress.json, N = force start page"
+        required: false
+        default: "0"
+      min_year:
+        description: "Minimum vehicle year to keep (DGX contract)"
+        required: false
+        default: "2020"
+  repository_dispatch:
+    types: [continue_scraping]
+
+concurrency:
+  group: fujin-avito-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Setup Python (parquet step)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install Node deps
+        run: npm install
+
+      - name: Install Python deps
+        run: pip install -r scraper/requirements.txt
+
+      - name: Decompress raw data
+        run: |
+          for gz in data/raw/*.jsonl.gz; do
+            [ -f "$gz" ] || continue
+            echo "Decompressing $gz..."
+            gzip -d "$gz"
+          done
+          ls -lh data/raw || true
+
+      - name: Run Scraper
+        run: |
+          npx tsx scraper/avito.ts \
+            --time-budget "${{ inputs.time_budget_min || '345' }}" \
+            --start-page "${{ inputs.start_page || '0' }}" \
+            --min-year "${{ inputs.min_year || '2020' }}"
+
+      - name: Build parquet + quality (warn-only)
+        run: |
+          python3 scraper/to_parquet.py --min-year "${{ inputs.min_year || '2020' }}" || true
+          python3 scraper/quality_check.py || true
+
+      - name: Compress raw data
+        run: |
+          for f in data/raw/*.jsonl; do
+            [ -f "$f" ] || continue
+            echo "Compressing $f..."
+            gzip -k -f "$f"
+          done
+          ls -lh data/raw data/processed reports || true
+
+      - name: Commit Progress and Data
+        run: |
+          git config user.name "fujin-bot"
+          git config user.email "fujin-bot@users.noreply.github.com"
+          # Largus pattern: never commit live .jsonl, only .gz + state + outputs
+          git rm --cached data/raw/*.jsonl 2>/dev/null || true
+          git rm --cached scraper/*.jsonl 2>/dev/null || true
+          git add data/raw/*.jsonl.gz scraper/progress.json scraper/error.log data/seen_ids.json data/processed reports 2>/dev/null || true
+          git commit -m "Auto-commit Fujin scraping progress [skip ci]" || echo "No changes to commit"
+          git push
+
+      - name: Trigger next run if not finished
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f scraper/DONE ]; then
+            echo "Scraping not finished yet. Triggering next run..."
+            gh workflow run scrape.yml -R ${{ github.repository }}
+          else
+            echo "Scraping fully finished!"
+          fi

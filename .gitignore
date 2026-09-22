@@ -1,0 +1,15 @@
+# Fujin — never commit raw working files, only compressed + processed
+node_modules/
+dist/
+.DS_Store
+
+# Largus pattern: ignore live jsonl/logs, commit only .gz + state + outputs
+scraper/*.jsonl
+scraper/*.log
+scraper/DONE
+data/raw/*.jsonl
+!data/raw/.gitkeep
+
+# Local env / browser caches
+.env*
+*.tsbuildinfo

@@ -1,0 +1,29 @@
+{
+  "name": "fujin-avito-scraper",
+  "version": "1.0.0",
+  "description": "Autonomous Avito.ma bulk scraper for DGX A100 price-model training. Largus-proven pattern: HTTP-first + progress resume + 6h time-box + gzip + self-chaining. Year >= 2020, sale-price only.",
+  "type": "module",
+  "scripts": {
+    "scrape": "tsx scraper/avito.ts",
+    "scrape:dry": "tsx scraper/avito.ts --time-budget 2 --max-pages 2",
+    "quality": "python3 scraper/quality_check.py",
+    "parquet": "python3 scraper/to_parquet.py",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.19.0",
+    "cheerio": "^1.2.0"
+  },
+  "optionalDependencies": {
+    "puppeteer-core": "^23.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "@sparticuz/chromium-min": "^131.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "ISC"
+}
