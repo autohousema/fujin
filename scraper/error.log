@@ -1,0 +1,6 @@
+[2026-09-22T20:55:20.682Z] Browser fallback failed for https://www.avito.ma/fr/maroc/voitures_d_occasion-%C3%A0_vendre?o=1715: Navigation timeout of 30000 ms exceeded
+[2026-09-22T20:55:20.682Z] Failed to fetch https://www.avito.ma/fr/maroc/voitures_d_occasion-%C3%A0_vendre?o=1715 after 1 attempts: HTTP 403
+[2026-09-22T20:55:20.682Z] Empty response page 1715: https://www.avito.ma/fr/maroc/voitures_d_occasion-%C3%A0_vendre?o=1715
+[2026-09-22T20:56:34.597Z] Browser fallback failed for https://www.avito.ma/fr/maroc/voitures_d_occasion-%C3%A0_vendre?o=1721: Navigation timeout of 30000 ms exceeded
+[2026-09-22T20:56:34.597Z] Failed to fetch https://www.avito.ma/fr/maroc/voitures_d_occasion-%C3%A0_vendre?o=1721 after 1 attempts: HTTP 403
+[2026-09-22T20:56:34.597Z] Empty response page 1721: https://www.avito.ma/fr/maroc/voitures_d_occasion-%C3%A0_vendre?o=1721
