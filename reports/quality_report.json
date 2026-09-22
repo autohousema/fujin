@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-09-22T17:02:53.631889",
+  "min_year": 2020,
+  "raw_rows": 2099,
+  "deduped": 2099,
+  "listings_ge_min_year": 1302,
+  "dropped_old": 797,
+  "training_rows": 646,
+  "price_types": {
+    "missing": 652,
+    "sale": 650
+  },
+  "null_year": 0,
+  "format": "parquet"
+}
