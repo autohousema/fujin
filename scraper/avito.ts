@@ -159,6 +159,10 @@ function logError(message: string) {
 
 let fallbackDisabled = false;
 let fallbackStrikes = 0;
+// GH runners are 403'd on primary almost always: after 2 consecutive
+// fallback-rescued pages, try primary only once per page (fast path to
+// fallback) instead of burning ~60s on doomed retries.
+let fallbackFirst = false;
 
 /** Browser fallback that can NEVER crash the run (circuit breaker). */
 async function tryBrowserFallback(url: string): Promise<string | null> {
@@ -200,7 +204,8 @@ async function fetchPage(
   url: string,
   retries = 3
 ): Promise<{ html: string; viaFallback: boolean }> {
-  for (let i = 0; i < retries; i++) {
+  const tries = fallbackFirst ? 1 : retries;
+  for (let i = 0; i < tries; i++) {
     try {
       console.log(`[GET] ${url}`);
       const res = await axios.get(url, {
@@ -229,11 +234,11 @@ async function fetchPage(
       const status = err?.response?.status;
       console.error(`  fetch attempt ${i + 1}/${retries} failed: ${msg}`);
       if (status === 404) return { html: "", viaFallback: false };
-      if (i === retries - 1) {
+      if (i === tries - 1) {
         // Last resort: AutoHouse browser fallback (never fatal — see helper)
         const fbHtml = await tryBrowserFallback(url);
         if (fbHtml) return { html: fbHtml, viaFallback: true };
-        logError(`Failed to fetch ${url} after ${retries} attempts: ${msg}`);
+        logError(`Failed to fetch ${url} after ${tries} attempts: ${msg}`);
         return { html: "", viaFallback: false };
       }
       // Longer backoff on 403/429 (GH IPs are flagged); standard 5s otherwise
@@ -409,6 +414,7 @@ async function run() {
   let page = progress.nextPage;
   let emptyStreak = 0;
   let pagesDone = 0;
+  let fbPages = 0;
 
   while (true) {
     if (Date.now() - startTime > MAX_RUNTIME_MS) {
@@ -422,7 +428,16 @@ async function run() {
 
     const url = page <= 1 ? BASE_URL : `${BASE_URL}?o=${page}`;
     const { html, viaFallback } = await fetchPage(url);
-    if (viaFallback) progress.fallbackCount++;
+    if (viaFallback) {
+      progress.fallbackCount++;
+      fbPages++;
+      if (fbPages >= 2 && !fallbackFirst) {
+        fallbackFirst = true;
+        console.log("Primary blocked repeatedly → fallback-first mode (1 quick try + browser).");
+      }
+    } else if (html) {
+      fbPages = 0;
+    }
 
     if (!html) {
       progress.errors++;

@@ -99,10 +99,17 @@ jobs:
         run: |
           git config user.name "fujin-bot"
           git config user.email "fujin-bot@users.noreply.github.com"
-          # Largus pattern: never commit live .jsonl, only .gz + state + outputs
+          # Largus pattern: never commit live .jsonl, only .gz + state + outputs.
+          # NOTE: each add is separate — one unmatched/ignored pathspec must
+          # not abort the whole staging (that silently lost pilot data).
           git rm --cached data/raw/*.jsonl 2>/dev/null || true
           git rm --cached scraper/*.jsonl 2>/dev/null || true
-          git add data/raw/*.jsonl.gz scraper/progress.json scraper/error.log data/seen_ids.json data/processed reports 2>/dev/null || true
+          git add data/raw/*.jsonl.gz 2>/dev/null || true
+          git add scraper/progress.json 2>/dev/null || true
+          git add -f scraper/error.log 2>/dev/null || true
+          git add data/seen_ids.json 2>/dev/null || true
+          git add data/processed reports 2>/dev/null || true
+          git status --short || true
           git commit -m "Auto-commit Fujin scraping progress [skip ci]" || echo "No changes to commit"
           git push
 
