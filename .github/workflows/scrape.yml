@@ -51,6 +51,12 @@ jobs:
       - name: Install Node deps
         run: npm install
 
+      - name: Setup Chrome (browser fallback)
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
       - name: Install Python deps
         run: pip install -r scraper/requirements.txt
 
@@ -64,6 +70,8 @@ jobs:
           ls -lh data/raw || true
 
       - name: Run Scraper
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: |
           npx tsx scraper/avito.ts \
             --time-budget "${{ inputs.time_budget_min || '345' }}" \
@@ -71,11 +79,13 @@ jobs:
             --min-year "${{ inputs.min_year || '2020' }}"
 
       - name: Build parquet + quality (warn-only)
+        if: always()
         run: |
           python3 scraper/to_parquet.py --min-year "${{ inputs.min_year || '2020' }}" || true
           python3 scraper/quality_check.py || true
 
       - name: Compress raw data
+        if: always()
         run: |
           for f in data/raw/*.jsonl; do
             [ -f "$f" ] || continue
@@ -85,6 +95,7 @@ jobs:
           ls -lh data/raw data/processed reports || true
 
       - name: Commit Progress and Data
+        if: always()
         run: |
           git config user.name "fujin-bot"
           git config user.email "fujin-bot@users.noreply.github.com"

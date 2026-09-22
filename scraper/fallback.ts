@@ -1,18 +1,44 @@
 /**
- * Fujin — browser fallback fetcher (AutoHouse setup).
- * =====================================================
+ * Fujin — browser fallback fetcher (AutoHouse setup, CI-safe).
+ * ============================================================
  * Ported from AutoHouse-main/lib/browser.ts (puppeteer-extra + stealth).
  * Used ONLY when primary axios fetch gets 403 / Cloudflare challenge
  * or when __NEXT_DATA__ is missing from the HTTP response.
  *
+ * Chrome resolution order (NO remote tarball downloads — the
+ * @sparticuz/chromium-min tarball proved flaky in CI with
+ * "Invalid tar header" crashes that escape try/catch via EventEmitter):
+ *   1. $CHROME_PATH (set by browser-actions/setup-chrome in CI)
+ *   2. Well-known local paths
+ *
  * Optional deps (see package.json optionalDependencies):
- *   puppeteer-core, puppeteer-extra, puppeteer-extra-plugin-stealth,
- *   @sparticuz/chromium-min
- * If they are not installed (local smoke test), this throws a clear
- * error and the caller skips the page instead of crashing the run.
+ *   puppeteer-core, puppeteer-extra, puppeteer-extra-plugin-stealth.
+ * If they are not installed, this throws a clear error and the caller
+ * skips the page instead of crashing the run.
  */
 
 let cachedBrowser: any = null;
+let fallbackBroken = false;
+
+async function fsExists(p: string): Promise<boolean> {
+  try {
+    const fs = await import("fs");
+    return fs.existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+export function isFallbackBroken(): boolean {
+  return fallbackBroken;
+}
+
+export function markFallbackBroken(reason: string): void {
+  if (!fallbackBroken) {
+    fallbackBroken = true;
+    console.error(`  fallback disabled for rest of run: ${reason}`);
+  }
+}
 
 async function getBrowser(): Promise<any> {
   // Dynamic imports so `npm install` without optional deps still works.
@@ -29,34 +55,26 @@ async function getBrowser(): Promise<any> {
 
   if (cachedBrowser?.connected) return cachedBrowser;
 
-  const isCI = !!process.env.CI || !!process.env.GITHUB_ACTIONS;
-  let executablePath: string | undefined;
+  // 1. CI-provided Chrome (browser-actions/setup-chrome sets CHROME_PATH)
+  // 2. Well-known local paths. No remote tarball downloads.
+  const candidates = [
+    process.env.CHROME_PATH,
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+  ].filter(Boolean) as string[];
 
-  if (!isCI) {
-    const fs = await import("fs");
-    const candidates = [
-      "/usr/bin/google-chrome",
-      "/usr/bin/google-chrome-stable",
-      "/usr/bin/chromium-browser",
-      "/usr/bin/chromium",
-    ];
-    for (const p of candidates) {
-      try {
-        if (fs.existsSync(p)) {
-          executablePath = p;
-          break;
-        }
-      } catch {
-        /* ignore */
-      }
+  let executablePath: string | undefined;
+  for (const p of candidates) {
+    if (await fsExists(p)) {
+      executablePath = p;
+      break;
     }
-    if (!executablePath) {
-      throw new Error("No local Chrome found for browser fallback");
-    }
-  } else {
-    const { default: chromium } = await import("@sparticuz/chromium-min");
-    executablePath = await chromium.executablePath(
-      "https://github.com/nicobytes/nicobytes-downloads/releases/download/v131.0.1/chromium-v131.0.1-pack.tar"
+  }
+  if (!executablePath) {
+    throw new Error(
+      "No Chrome binary found (set CHROME_PATH via browser-actions/setup-chrome)"
     );
   }
 

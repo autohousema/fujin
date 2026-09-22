@@ -157,6 +157,45 @@ function logError(message: string) {
 
 // ─── Fetch (Largus fetchPage + AutoHouse fallback) ─────────────────────────
 
+let fallbackDisabled = false;
+let fallbackStrikes = 0;
+
+/** Browser fallback that can NEVER crash the run (circuit breaker). */
+async function tryBrowserFallback(url: string): Promise<string | null> {
+  if (fallbackDisabled) return null;
+  try {
+    const mod: any = await import("./fallback.js").catch(() => null);
+    if (!mod?.fetchWithBrowser) return null;
+    if (mod.isFallbackBroken?.()) {
+      fallbackDisabled = true;
+      return null;
+    }
+    const html: string = await mod.fetchWithBrowser(url);
+    if (html && html.length > 2000) {
+      fallbackStrikes = 0;
+      return html;
+    }
+    return null;
+  } catch (fbErr: any) {
+    fallbackStrikes++;
+    console.error(
+      `  fallback failed (${fallbackStrikes}/3): ${fbErr?.message ?? fbErr}`
+    );
+    logError(`Browser fallback failed for ${url}: ${fbErr?.message ?? fbErr}`);
+    if (fallbackStrikes >= 3) {
+      fallbackDisabled = true;
+      try {
+        const mod: any = await import("./fallback.js").catch(() => null);
+        mod?.markFallbackBroken?.("3 consecutive failures");
+      } catch {
+        /* ignore */
+      }
+      console.error("  fallback disabled for rest of run (primary-only mode)");
+    }
+    return null;
+  }
+}
+
 async function fetchPage(
   url: string,
   retries = 3
@@ -169,11 +208,15 @@ async function fetchPage(
           "User-Agent": randomOf(USER_AGENTS),
           "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
           Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          Referer: "https://www.avito.ma/",
+          "Upgrade-Insecure-Requests": "1",
+          "Sec-Fetch-Site": "same-origin",
+          "Sec-Fetch-Mode": "navigate",
         },
-        timeout: 15000,
+        timeout: 20000,
         maxRedirects: 5,
-        validateStatus: (s) => s < 500, // 4xx handled below (noBlindRetry on 404)
+        validateStatus: (s) => s < 500, // 4xx handled below (no blind retry on 404)
       });
       if (res.status === 404) return { html: "", viaFallback: false };
       if (res.status === 403 || res.status === 429) throw new Error(`HTTP ${res.status}`);
@@ -187,21 +230,15 @@ async function fetchPage(
       console.error(`  fetch attempt ${i + 1}/${retries} failed: ${msg}`);
       if (status === 404) return { html: "", viaFallback: false };
       if (i === retries - 1) {
-        // Last resort: AutoHouse browser fallback (Cloudflare challenge)
-        try {
-          const { fetchWithBrowser } = await import("./fallback.js").catch(() => null as any);
-          if (fetchWithBrowser) {
-            console.log(`  → trying browser fallback for ${url}`);
-            const html = await fetchWithBrowser(url);
-            if (html && html.length > 2000) return { html, viaFallback: true };
-          }
-        } catch (fbErr: any) {
-          console.error(`  fallback unavailable: ${fbErr?.message ?? fbErr}`);
-        }
+        // Last resort: AutoHouse browser fallback (never fatal — see helper)
+        const fbHtml = await tryBrowserFallback(url);
+        if (fbHtml) return { html: fbHtml, viaFallback: true };
         logError(`Failed to fetch ${url} after ${retries} attempts: ${msg}`);
         return { html: "", viaFallback: false };
       }
-      await delay(5000 + jitter(0, 3000)); // backoff before retry (Largus: 5s)
+      // Longer backoff on 403/429 (GH IPs are flagged); standard 5s otherwise
+      const blocked = status === 403 || status === 429 || /403|429/.test(msg);
+      await delay(blocked ? 15000 + jitter(0, 10000) : 5000 + jitter(0, 3000));
     }
   }
   return { html: "", viaFallback: false };
@@ -410,28 +447,23 @@ async function run() {
       console.log(`Page ${page}: no ads in __NEXT_DATA__`);
       // One browser-fallback attempt for list pages missing JSON (challenge HTML)
       if (!viaFallback) {
-        try {
-          const mod: any = await import("./fallback.js").catch(() => null);
-          if (mod?.fetchWithBrowser) {
-            const fbHtml = await mod.fetchWithBrowser(url);
-            const fbData = extractNextData(fbHtml);
-            const fbAds: any[] =
-              fbData?.props?.pageProps?.componentProps?.ads?.ads ?? [];
-            if (fbAds.length) {
-              progress.fallbackCount++;
-              await handleAds(fbAds, args, seen, progress, outFile);
-              emptyStreak = 0;
-              page++;
-              progress.nextPage = page;
-              pagesDone++;
-              saveProgress(progress);
-              saveSeen(seen);
-              await delay(jitter(args.delayMin, args.delayMax));
-              continue;
-            }
+        const fbHtml = await tryBrowserFallback(url);
+        if (fbHtml) {
+          const fbData = extractNextData(fbHtml);
+          const fbAds: any[] =
+            fbData?.props?.pageProps?.componentProps?.ads?.ads ?? [];
+          if (fbAds.length) {
+            progress.fallbackCount++;
+            await handleAds(fbAds, args, seen, progress, outFile);
+            emptyStreak = 0;
+            page++;
+            progress.nextPage = page;
+            pagesDone++;
+            saveProgress(progress);
+            saveSeen(seen);
+            await delay(jitter(args.delayMin, args.delayMax));
+            continue;
           }
-        } catch {
-          /* fallback failed → counted as empty */
         }
       }
       emptyStreak++;
