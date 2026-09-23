@@ -1,11 +1,11 @@
 {
-  "nextPage": 2526,
-  "totalSeen": 86781,
-  "kept": 22404,
-  "skippedOld": 56526,
-  "skippedNoPrice": 7851,
+  "nextPage": 3774,
+  "totalSeen": 130117,
+  "kept": 29417,
+  "skippedOld": 90378,
+  "skippedNoPrice": 10322,
   "skippedMonthly": 0,
-  "fallbackCount": 2523,
-  "errors": 2,
-  "updatedAt": "2026-09-22T22:48:48.604Z"
+  "fallbackCount": 3772,
+  "errors": 7,
+  "updatedAt": "2026-09-23T01:30:41.192Z"
 }

@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-22T22:48:56.647619",
+  "generated_at": "2026-09-23T01:30:50.482278",
   "min_year": 2020,
-  "raw_rows": 86781,
-  "deduped": 86781,
-  "listings_ge_min_year": 30255,
-  "dropped_old": 56526,
-  "training_rows": 22112,
+  "raw_rows": 130117,
+  "deduped": 130117,
+  "listings_ge_min_year": 39739,
+  "dropped_old": 90378,
+  "training_rows": 29120,
   "price_types": {
-    "missing": 7851,
-    "sale": 22404
+    "missing": 10322,
+    "sale": 29417
   },
-  "null_year": 322,
+  "null_year": 332,
   "format": "parquet"
 }
